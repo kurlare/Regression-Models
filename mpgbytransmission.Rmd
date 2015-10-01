@@ -1,0 +1,136 @@
+---
+title: "Modeling MPG by Transmission"
+author: "Rafi Kurlansik"
+date: "Monday, September 21, 2015"
+output: pdf_document
+---
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+require(datasets)
+require(ggplot2)
+require(GGally)
+require(knitr)
+
+```
+
+### Summary
+
+This paper aims to determine whether an automatic or manual transmission is better for miles per gallon, and give an estimated quantity for this value.  Using the `mtcars` dataset, we will first explore the data and choose our regressors.  We will look at two models, and then run some confirmation tests before presenting our conclusions.  Please see the appendix for all figures and tables.
+
+### Exploratory Data Analysis
+
+The `mtcars` dataset contains 11 variables on 32 different cars from 1973-74.  The measured variables are 1)`mpg`, 2)`cyl` number of cylinders, 3) `disp` displacement, 4) `hp` horsepower, 5) `drat` rear axle ratio, 6) `wt` weight(lb/1000), 7) `qsec` 1/4 mile time, 8) `vs` engine orientation(straight or 'V'), 9) `am` transmission (0 = automatic, 1 = manual), 10) `gear` number of forward gears, and 11) `carb` number of carburetors.  Table 1 in the appendix displays the original data.. 
+
+While we ultimately want to know what impact, if any, transmission has on mpg, there are many variables that can have an impact on mpg.  The linear model `lm(mpg ~ am, mtcars)` gives us a transmission coefficient of 7.245, which seems to indicate that a manual transmission greatly increases mpg.  We also find a positive correlation of 0.599.  However, this model is far too simplistic.  Many factors outside of transmission can affect mpg - weight, cylinders, possibly others!  
+
+Our first task is determine which independent variables appear to have a relationship with the dependent variable, mpg.  Then we will perform a simple check for multicollinearity among the independent variables, and based on what we find there we will be able to choose the regressors to build our model. 
+
+Table 2 in the appendix is a table with correlation values for each variable in the `mtcars` dataset.  Using this table, we can tell that weight (-0.868), cylinders(-0.852), and displacement(-0.848) have the strongest correlations to mpg.  Looking for redundancy, weight is strongly correlated with cylinders(0.782) and displacement(0.888).  Because weight and displacement are so closely correlated, and weight is more closely correlated to mpg, we will drop displacement from our regression.  Cylinders are slightly less correlated, so we will build two models - one including cylinders and one without.  Figure 1 shows the relationships between our regressors with scatterplots and correlations.
+
+### Regression Models
+
+The stage is set to build two multivariate linear regressions with outcome variable `mpg`.  Model 1 contains predictors `am`, `wt`, and `cyl`.  Model 2 leaves out cylinders.
+
+```{r, collapse=TRUE}
+model1 <- lm(mpg ~ am + wt + cyl, mtcars)  ## First model, including cylinders.
+model2 <- lm(mpg ~ am + wt, mtcars) ## Second model, without cylinders.  
+
+summary(model1)$coefficients  
+summary(model2)$coefficients  
+```
+
+We can interpret the coefficients for `am` (transmission) to mean that in **model 1, we get a -0.024 decrease in mpg for having a manual transmission, while in model 2 we see a 0.177 increase in mpg.**  There is a slightly better adjusted r-squared value in model 1: 81% vs. 73%.  This tells us that we have explained more of the total variation by including cylinders in our regression.  Figure 2 in the appendix illustrates this phenomena, with model 1 having slightly less variation around the regression line than model 2.  
+
+95% confidence intervals for both models with $\hat{B_{1}} \pm 1.96*SE(\hat{B_{1}})$ are:
+
+```{r am confidence intervals, collapse=TRUE}
+sumCoef1 <- summary(model1)$coefficients
+sumCoef1[2,1] + c(1, -1) * 1.96 * (sumCoef1[2,2])
+sumCoef2 <- summary(model2)$coefficients
+sumCoef2[2,1] + c(1, -1) * 1.96 * (sumCoef2[2,2])
+```
+In both models the intervals include 0.  Thus, we cannot conclude with 95% confidence that there is a significant relationship between transmission and mpg.  The p-values for transmission in these models are also extremely high: 
+
+```{r, collapse=TRUE}
+sumCoef1[2,4] ## Model 1 transmission estimate p-value
+sumCoef2[2,4] ## Model 2 transmission estimate p-value
+
+```
+Were there to be no relationship between mpg and transmission type, we would get these values 89% and 99% of the time.  That's extremely poor for trying to establish a meaningful relationship between the two.
+
+Running a `hatvalues` test and residual plot shows that, overall, the model fits the data well.  Figure 3 illustrates that there is no discernible pattern in the residuals, and the hat values have no extreme impact on the model.  
+
+### Conclusion
+
+In conclusion, which kind of transmission one chooses has no significant effect on miles per gallon.  At 32 cars, the sample size is somewhat small, but even so, the numbers aren't even close.  Based on the two models in this analysis, weight and cylinders have a far greater impact on what kind of mpg you get.  
+
+\newpage
+
+### Appendix
+
+Table 1: 
+
+```{r, collapse=TRUE}
+mtcars
+```
+
+Table 2:
+
+```{r Correlation table, echo=FALSE, fig.cap="Figure 1"}
+cor(mtcars[, c(1:4,6)])
+
+```
+
+\newpage
+Figure 1: 
+
+```{r Pairs plots for potential regressors, warning=FALSE, echo=FALSE, fig.cap= "Figure 2", fig.height=3.85}
+mtcars$am <- as.factor(mtcars$am)
+pot_regres <- ggpairs(
+        mtcars[, c(1,2,3,6)], 
+        lower = list(continuous = "smooth"), 
+        params = list(corSize = 8),
+        diag = "blank"
+        )
+pot_regres
+```
+
+Figure 2:
+
+```{r variation reduction plots, echo=FALSE, fig.show='hold', fig.height=3.5, fig.width=3.5}
+par(mfrow = c(1,2))
+e = c(resid(lm(mpg ~ 1, data = mtcars)),
+      resid(lm(mpg ~ wt + cyl + am, data = mtcars)))
+fit = factor(c(rep("mpg ~ 1", nrow(mtcars)),
+               rep("Model 1", nrow(mtcars))))
+g = ggplot(data.frame(e = e, fit = fit), aes(y = e, x = fit, fill = fit))
+g = g + geom_dotplot(binaxis = "y", size = 6, stackdir = "center", binwidth = 0.5)
+g = g + labs(title = "Variation Explained, Model 1", y = "Residuals")
+g
+
+e2 = c(resid(lm(mpg ~ 1, data = mtcars)),
+      resid(lm(mpg ~ wt + am, data = mtcars)))
+fit2 = factor(c(rep("mpg ~ 1", nrow(mtcars)),
+               rep("Model 2", nrow(mtcars))))
+g2 = ggplot(data.frame(e2 = e2, fit2 = fit2), aes(y = e2, x = fit2, fill = fit2))
+g2 = g2 + geom_dotplot(binaxis = "y", size = 6, stackdir = "center", binwidth = 0.5)
+g2 = g2 + labs(title = "Variation Explained, Model 2", y = "Residuals")
+g2
+```
+\newpage
+Figure 3:
+
+```{r Residuals plot for chosen regressors, echo=FALSE, fig.height = 3, fig.width= 3, fig.show='hold'}
+rsdplot <- ggplot(mtcars, 
+                  aes(x = mtcars$mpg, y = resid(lm(model1)))) +
+           geom_point(size = 3, colour = "black", alpha = 0.4) +
+           geom_point(size = 2, colour = "red", alpha = 0.4) +
+           geom_hline(yintercept = 0, size =2) +
+           labs(title = "Residuals mpg ~ wt + cyl", x = "MPG", y = "Residuals")
+rsdplot
+
+plot(as.numeric(hatvalues(model1)), 
+     xlab = "Cars (1-32)", 
+     ylab = "Hat Values",
+     main = "Hat Values Model 1",
+     pch = 20)
+```
